@@ -1,5 +1,6 @@
 import requests
 from pprint import pprint
+from itertools import count
 
 HOST = 'https://api.hh.ru/'
 
@@ -12,33 +13,29 @@ def main():
         'Scala', 'C'
     )
 
-    # vacansies_stats = {}
-    # for programming_language in programming_languages:
-    #     count = get_hh_vacancies(text=programming_language).json()['found']
-    #     vacansies_stats[programming_language] = count
-    #
-    # for row in sorted(vacansies_stats.items(), key=lambda item: item[1], reverse=True):
-    #     print(row)
+    vacancies_stats = {}
 
-    # python_salary_stats = []
-    # response = get_hh_vacancies()
-    # for job in response.json()['items']:
-    #     if job['salary'] is None:
-    #         continue
-    #
-    #     salary = {}
-    #     for parameter, value in job['salary'].items():
-    #         salary[parameter] = value
-    #     python_salary_stats.append(salary)
-    #
-    # pprint(python_salary_stats)
+    for programming_language in programming_languages:
+        response = get_hh_vacancies(text=programming_language)
 
-    response = get_hh_vacancies()
-    for job in response.json()['items']:
-        print(predict_rub_salary(job))
+        list_salary = []
+
+        for job in response:
+            predicted_salary = predict_rub_salary(job)
+            if predicted_salary is not None:
+                list_salary.append(predicted_salary)
+
+        vacancies_stats[programming_language] = {}
+        vacancies_stats[programming_language]['vacancies_found'] = len(response)
+        vacancies_stats[programming_language]['vacancies_processed'] = len(list_salary)
+        vacancies_stats[programming_language]['average_salary'] = sum(list_salary) // len(list_salary)
+
+    pprint(vacancies_stats)
 
 
-def get_hh_vacancies(**kwargs) -> requests:
+def get_hh_vacancies(get_all=False, **kwargs) -> requests:
+    vacancies_list = []
+
     method = 'vacancies'
     request_url = HOST + method
     params = {
@@ -52,22 +49,26 @@ def get_hh_vacancies(**kwargs) -> requests:
         if param in kwargs:
             params[param] = kwargs[param]
 
-    response = requests.get(request_url, params)
-    response.raise_for_status()
-    return response
+    for page in count(0):
+        response = requests.get(request_url, params)
+        response.raise_for_status()
+
+        vacancies_list += response.json()['items']
+        pages_found = int(response.json()['pages'])
+        if page >= pages_found:
+            return vacancies_list
 
 
 def predict_rub_salary(job):
     salary = job['salary']
     if salary is None or salary['currency'] != 'RUR':
         return None
-
     if salary['from'] is None and salary['to'] is None:
         return None
     if salary['from'] is None:
-        return salary['to'] * 0.8
+        return round(salary['to'] * 0.8)
     if salary['to'] is None:
-        return salary['from'] * 1.2
+        return round(salary['from'] * 1.2)
     return (salary['to'] + salary['from']) // 2
 
 
