@@ -1,55 +1,46 @@
 import requests
-from dotenv import load_dotenv
-import os
-from scripts import predict_rub_salary, get_table_vacancies
+from scripts import predict_rub_salary
 from itertools import count
-from terminaltables import SingleTable
+import os
 
-load_dotenv()
-SECRET_KEY = os.getenv('SUPERJOB_SECRET_KEY')
 HOST = 'https://api.superjob.ru/'
 API_VERSION = '2.30'
-PROGRAMMING_LANGUAGES = (
-        'Python', 'Java', 'Javascript',
-        'Ruby', 'PHP', 'C++',
-        'C#', 'GO', 'Shell',
-        'Scala', 'C', '1С'
-)
 
 
-def get_superjob_statistics(programming_languages=PROGRAMMING_LANGUAGES):
+def get_superjob_statistics(secret_key, programming_languages):
     vacancies_stats = {}
 
     for programming_language in programming_languages:
         vacancies = get_superjob_vacancies(
+            secret_key,
             keyword=f'Программист {programming_language}',
             town=4
         )
 
-        list_salary = []
+        prog_lang_salaries = []
 
         for vacancy in vacancies:
             predicted_salary = predict_rub_salary_for_superjob(vacancy)
             if predicted_salary:
-                list_salary.append(predicted_salary)
+                prog_lang_salaries.append(predicted_salary)
 
-        vacancies_stats[programming_language] = {}
-        vacancies_stats[programming_language]['vacancies_found'] = len(vacancies)
-        vacancies_stats[programming_language]['vacancies_processed'] = len(list_salary)
-        if len(list_salary):
-            vacancies_stats[programming_language]['average_salary'] = sum(list_salary) // len(list_salary)
-        else:
-            vacancies_stats[programming_language]['average_salary'] = None
+        vacancies_stats[programming_language] = {
+            'vacancies_found': len(vacancies),
+            'vacancies_processed': len(prog_lang_salaries),
+            'average_salary':
+                sum(prog_lang_salaries) // len(prog_lang_salaries) if len(prog_lang_salaries)
+                else None
+        }
 
     return vacancies_stats
 
 
-def get_superjob_vacancies(**kwargs):
-    vacancies_list = []
+def get_superjob_vacancies(secret_key, **kwargs):
+    vacancies = []
 
     method = '/vacancies/'
     request_url = HOST + API_VERSION + method
-    headers = {'X-Api-App-Id': SECRET_KEY}
+    headers = {'X-Api-App-Id': secret_key}
     params = {
         'page': kwargs.get('page', 0),
         'period': kwargs.get('period', 0),
@@ -62,9 +53,12 @@ def get_superjob_vacancies(**kwargs):
     for page in count(0):
         params['page'] = page
         response = requests.get(request_url, params, headers=headers)
-        vacancies_list += response.json()['objects']
-        if not response.json()['more']:
-            return vacancies_list
+        response.raise_for_status()
+
+        response_decode = response.json()
+        vacancies += response_decode['objects']
+        if not response_decode['more']:
+            return vacancies
 
 
 def predict_rub_salary_for_superjob(vacancy):
