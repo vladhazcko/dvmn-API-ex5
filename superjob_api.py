@@ -1,7 +1,6 @@
 import requests
 from scripts import predict_rub_salary
 from itertools import count
-import os
 
 HOST = 'https://api.superjob.ru/'
 API_VERSION = '2.30'
